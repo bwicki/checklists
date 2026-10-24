@@ -41,10 +41,20 @@ ein Token ohne «D1 Edit»/«R2 Edit»). Der Workflow ist wiederholbar.
 
 1. https://platform.claude.com → Settings → **API keys** → Create key, Name «checklists».
 2. Schlüssel sofort in den Passwortmanager kopieren (wird nur einmal gezeigt).
-3. Nach der Lieferung v0.1.0 in der App unter Admin → Zugänge eintragen; er wird mit `ENC_KEY`
-   verschlüsselt in der Datenbank abgelegt.
+3. In der Verwaltung (https://checklists.wicki.aero/admin.html) unter **Einstellungen → Zugänge**
+   eintragen; er wird mit `ENC_KEY` verschlüsselt in der Datenbank abgelegt und nie angezeigt.
 
-## 5 Laufender Betrieb
+## 5 Erster Start
+
+1. Piloten-App öffnen (https://checklists.wicki.aero), Sprache wählen, eigenes Kürzel (≥ 5 Zeichen) und
+   Namen eingeben. **Der erste angelegte Nutzer wird automatisch Supermaster.**
+2. Verwaltung öffnen (`/admin.html`, gleiches Kürzel) → **Ballonmuster** anlegen (Werte je Variable),
+   dann **Import** (Word/Excel/Text) oder «Neue Liste von Hand» → prüfen → **Speichern und freigeben**.
+3. Unter **Nutzer** dem Admin die Rolle «Admin» geben, sobald er sich in der App angemeldet hat.
+4. Testweise in der App einen Ballon erfassen (Mehr → Ballon hinzufügen) – die Listen der passenden
+   Ballonart erscheinen.
+
+## 6 Laufender Betrieb
 
 * Änderungen unter `worker/` werden durch den Workflow «Deploy worker» automatisch deployt
   (inklusive Schema-Nachzug).
