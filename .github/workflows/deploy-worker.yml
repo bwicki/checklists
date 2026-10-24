@@ -1,0 +1,33 @@
+# Deployt den Cloudflare Worker bei jeder Änderung unter worker/.
+# Benötigt die Repository-Secrets CLOUDFLARE_API_TOKEN und CLOUDFLARE_ACCOUNT_ID (siehe SETUP.md).
+# Läuft erst sinnvoll, nachdem «Setup worker» einmal durchgelaufen ist (database_id in wrangler.toml).
+name: Deploy worker
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**']
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Schema nachziehen (wiederholbar)
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if grep -qE 'database_id = ""' wrangler.toml; then echo "::warning::Noch nicht eingerichtet – zuerst «Setup worker» ausführen"; exit 0; fi
+          npm ci --no-audit --no-fund
+          npx wrangler d1 execute checklists --remote --yes --file=schema.sql
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          command: deploy

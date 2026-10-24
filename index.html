@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SBA Checklisten</title>
+<link rel="icon" href="assets/sba-symbol.png" type="image/png">
+<style>
+  body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #FFFFFF; color: #111827; display: flex; min-height: 100vh; align-items: center; justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
+  @media (prefers-color-scheme: dark) { body { background: #111827; color: #F9FAFB; } .muted { color: #9CA3AF; } }
+  img { width: 220px; max-width: 80vw; height: auto; }
+  h1 { font-size: 24px; margin: 20px 0 6px; }
+  .muted { color: #4B5563; font-size: 15px; }
+  code { font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <img src="assets/sba-logo.png" alt="Swiss Ballooning Academy">
+  <h1>SBA Checklisten</h1>
+  <p class="muted">Die App ist im Aufbau. Lieferung v0.1.0 folgt.</p>
+  <p class="muted" id="api"></p>
+</main>
+<script src="js/config.js"></script>
+<script>
+  (function () {
+    var base = (window.CHECKLISTS_CONFIG || {}).apiBase || '';
+    var el = document.getElementById('api');
+    if (!base) { el.textContent = 'Worker: noch nicht eingerichtet (SETUP.md, Abschnitt 3).'; return; }
+    fetch(base + '/api/health').then(function (r) { return r.json(); }).then(function (j) {
+      el.textContent = 'Worker ' + (j.version || '') + ': ' + (j.ok ? 'erreichbar' : 'Fehler') + ' · Datenbank ' + (j.db || '');
+    }).catch(function () { el.textContent = 'Worker nicht erreichbar: ' + base; });
+  })();
+</script>
+</body>
+</html>

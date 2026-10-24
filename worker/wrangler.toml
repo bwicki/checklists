@@ -1,0 +1,27 @@
+# SBA Checklisten — Cloudflare Worker (API, D1, R2)
+# Einrichtung: siehe SETUP.md (GitHub-Workflow «Setup worker»). Secrets nie hier eintragen:
+#   SESSION_SECRET   signiert Geräte-Sitzungen (≥ 32 Zeichen)
+#   ENC_KEY          verschlüsselt gespeicherte Zugänge wie den Claude-API-Schlüssel (≥ 32 Zeichen)
+name = "checklists-api"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://checklists.wicki.aero,https://bwicki.github.io,http://localhost:8080,http://127.0.0.1:8080"
+APP_VERSION = "0.1.0"
+APP_URL = "https://checklists.wicki.aero"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "checklists"
+database_id = ""   # wird vom Workflow «Setup worker» eingetragen
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "checklists-files"
+
+# Eigene Domain (optional, nach dem ersten Deploy):
+# [[routes]]
+# pattern = "api.checklists.wicki.aero"
+# custom_domain = true

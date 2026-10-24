@@ -1,0 +1,154 @@
+# Einmalige Einrichtung des Cloudflare Workers — ohne lokalen Rechner.
+#
+# Start: GitHub → Actions → «Setup worker» → Run workflow.
+# Benötigt die Repository-Secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   Token «Edit Cloudflare Workers» + D1 Edit + Workers R2 Storage Edit
+#   CLOUDFLARE_ACCOUNT_ID  Account-ID aus dem Cloudflare-Dashboard
+#   SESSION_SECRET         beliebige lange Zufallszeichenkette (≥ 32 Zeichen)
+#   ENC_KEY                beliebige lange Zufallszeichenkette (≥ 32 Zeichen) — sicher aufbewahren,
+#                          ohne sie sind gespeicherte Zugänge (Claude-API-Schlüssel) nicht mehr lesbar
+#
+# Was passiert: D1-Datenbank «checklists» (ID in worker/wrangler.toml), R2-Bucket «checklists-files»,
+# Schema (wiederholbar), Deploy, Worker-Secrets, Gesundheitsprüfung, workers.dev-Adresse in js/config.js,
+# Commit der geänderten Dateien. Wiederholbar: Vorhandenes wird erkannt und übersprungen.
+name: Setup worker
+on:
+  workflow_dispatch:
+    inputs:
+      api_base:
+        description: 'js/config.js: «auto» trägt die workers.dev-Adresse ein (kein eigener Domainname nötig), «keep» lässt die Datei unverändert (eigene Domain)'
+        type: choice
+        default: auto
+        options: [auto, keep]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: setup-worker
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Voraussetzungen prüfen
+        env:
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          ENC_KEY: ${{ secrets.ENC_KEY }}
+        run: |
+          ok=1
+          [ -n "$CLOUDFLARE_API_TOKEN" ]  || { echo "::error::Secret CLOUDFLARE_API_TOKEN fehlt"; ok=0; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Secret CLOUDFLARE_ACCOUNT_ID fehlt"; ok=0; }
+          [ -n "$SESSION_SECRET" ]        || { echo "::error::Secret SESSION_SECRET fehlt (beliebige Zufallszeichenkette, ≥ 32 Zeichen)"; ok=0; }
+          [ -n "$ENC_KEY" ]               || { echo "::error::Secret ENC_KEY fehlt (beliebige Zufallszeichenkette, ≥ 32 Zeichen)"; ok=0; }
+          [ "${#SESSION_SECRET}" -ge 32 ] || { echo "::error::SESSION_SECRET ist kürzer als 32 Zeichen"; ok=0; }
+          [ "${#ENC_KEY}" -ge 32 ]        || { echo "::error::ENC_KEY ist kürzer als 32 Zeichen"; ok=0; }
+          [ "$ok" = 1 ]
+      - name: wrangler installieren
+        run: npm ci --no-audit --no-fund
+      - name: Cloudflare-Zugang prüfen
+        run: npx wrangler whoami
+      - name: D1-Datenbank «checklists»
+        id: d1
+        run: |
+          set +e
+          uuidre='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+          list=$(npx wrangler d1 list --json 2>/dev/null)
+          id=$(printf '%s' "$list" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const i=s.indexOf("[");const j=JSON.parse(s.slice(i));const d=j.find(x=>x.name==="checklists");process.stdout.write(d?(d.uuid||d.id||""):"")}catch{process.stdout.write("")}})')
+          if [ -z "$id" ]; then info=$(npx wrangler d1 info checklists --json 2>&1); id=$(printf '%s' "$info" | grep -oE "$uuidre" | head -1); fi
+          if [ -z "$id" ]; then
+            echo "Datenbank wird angelegt …"
+            out=$(npx wrangler d1 create checklists 2>&1); echo "$out"
+            id=$(printf '%s' "$out" | grep -oE "$uuidre" | head -1)
+          else
+            echo "Datenbank vorhanden"
+          fi
+          set -e
+          if [ -z "$id" ]; then
+            echo "--- d1 list ---"; echo "$list"; echo "--- d1 info ---"; echo "${info:-}"
+            echo "::error::database_id der D1-Datenbank «checklists» nicht ermittelbar – Ausgabe im Schritt prüfen"
+            exit 1
+          fi
+          sed -i -E "s/database_id = \"[^\"]*\"/database_id = \"$id\"/" wrangler.toml
+          echo "database_id = $id"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+      - name: R2-Bucket «checklists-files»
+        run: |
+          if npx wrangler r2 bucket list 2>/dev/null | grep -q 'checklists-files'; then echo "Bucket vorhanden"; exit 0; fi
+          if out=$(npx wrangler r2 bucket create checklists-files 2>&1); then echo "$out"; exit 0; fi
+          echo "$out"
+          case "$out" in
+            *10042*|*nable\ R2*|*not\ enabled*|*subscription*|*billing*|*payment*)
+              echo "::error::R2 ist für dieses Cloudflare-Konto noch nicht aktiviert. Dashboard → links «R2 Object Storage» → «Enable R2». Danach den Workflow erneut starten." ;;
+            *uthentication*|*10000*|*ermission*|*nauthorized*|*orbidden*)
+              echo "::error::Das API-Token darf R2 nicht verwalten. Cloudflare → My Profile → API Tokens → Token «Edit» → Berechtigung «Account · Workers R2 Storage · Edit» ergänzen → Update token. Danach den Workflow erneut starten." ;;
+          esac
+          exit 1
+      - name: Schema anlegen (wiederholbar)
+        run: |
+          npx wrangler d1 execute checklists --remote --yes --file=schema.sql || { echo "::error::Schema konnte nicht eingespielt werden – Ausgabe im Schritt prüfen"; exit 1; }
+      - name: Deploy
+        id: deploy
+        run: |
+          set +e
+          out=$(npx wrangler deploy 2>&1); rc=$?
+          set -e
+          echo "$out"
+          [ "$rc" = 0 ] || { echo "::error::Deploy fehlgeschlagen – Ausgabe im Schritt prüfen"; exit 1; }
+          url=$(echo "$out" | grep -oE 'https://[a-z0-9.-]+\.workers\.dev' | head -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Worker-Adresse: $url"
+      - name: Worker-Secrets setzen
+        env:
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          ENC_KEY: ${{ secrets.ENC_KEY }}
+        run: |
+          printf '%s' "$SESSION_SECRET" | npx wrangler secret put SESSION_SECRET || { echo "::error::SESSION_SECRET konnte nicht gesetzt werden"; exit 1; }
+          printf '%s' "$ENC_KEY" | npx wrangler secret put ENC_KEY || { echo "::error::ENC_KEY konnte nicht gesetzt werden"; exit 1; }
+      - name: Gesundheitsprüfung
+        run: |
+          url='${{ steps.deploy.outputs.url }}'
+          [ -n "$url" ] || { echo "::warning::workers.dev-Adresse nicht erkannt — Prüfung übersprungen"; exit 0; }
+          sleep 5
+          curl -sS --max-time 20 "$url/api/health" && echo
+      - name: js/config.js auf workers.dev-Adresse setzen
+        if: inputs.api_base == 'auto' && steps.deploy.outputs.url != ''
+        run: |
+          sed -i -E "s#apiBase: *'[^']*'#apiBase: '${{ steps.deploy.outputs.url }}'#" ../js/config.js
+          cat ../js/config.js
+      - name: Änderungen committen (wrangler.toml, js/config.js)
+        run: |
+          cd ..
+          git config user.name  "checklists-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/wrangler.toml js/config.js
+          if git diff --cached --quiet; then echo "keine Änderung"; exit 0; fi
+          git commit -m "Setup worker: database_id${{ inputs.api_base == 'auto' && ', apiBase' || '' }}"
+          git pull --rebase
+          git push
+      - name: Zusammenfassung
+        run: |
+          {
+            echo "## Worker eingerichtet"
+            echo
+            echo "* Worker-Adresse: ${{ steps.deploy.outputs.url }}"
+            echo "* Prüfung: ${{ steps.deploy.outputs.url }}/api/health"
+            echo "* database_id: ${{ steps.d1.outputs.id }}"
+            echo
+            echo "Nächste Schritte: https://checklists.wicki.aero öffnen (GitHub Pages braucht nach dem Commit 1–2 Minuten)."
+            echo "Die App selbst (Anmeldung, Checklisten, Admin) kommt mit der Lieferung v0.1.0; danach Admin → Zugänge → Claude-API-Schlüssel eintragen."
+            echo
+            echo "Eigene Domain (optional): Cloudflare → Workers & Pages → checklists-api → Settings → Domains & Routes → Add → Custom domain api.checklists.wicki.aero;"
+            echo "danach in js/config.js apiBase auf https://api.checklists.wicki.aero stellen (Workflow mit «keep» erneut laufen lassen oder von Hand ändern)."
+          } >> "$GITHUB_STEP_SUMMARY"

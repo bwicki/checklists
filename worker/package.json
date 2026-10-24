@@ -1,0 +1,15 @@
+{
+  "name": "checklists-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute checklists --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute checklists --remote --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
