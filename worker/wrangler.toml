@@ -15,7 +15,7 @@ APP_URL = "https://checklists.wicki.aero"
 [[d1_databases]]
 binding = "DB"
 database_name = "checklists"
-database_id = ""   # wird vom Workflow «Setup worker» eingetragen
+database_id = "8f09eff6-c706-4062-8247-2cb784179fed"   # wird vom Workflow «Setup worker» eingetragen
 
 [[r2_buckets]]
 binding = "FILES"

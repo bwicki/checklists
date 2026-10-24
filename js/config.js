@@ -3,5 +3,5 @@
  * Leer = lokaler Modus ohne Server.
  */
 window.CHECKLISTS_CONFIG = {
-  apiBase: '',
+  apiBase: 'https://checklists-api.balthasar.workers.dev',
 };
