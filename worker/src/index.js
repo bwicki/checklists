@@ -26,6 +26,7 @@ const err = (msg, status = 400, extra = {}) => json({ ok: false, error: msg }, s
 const now = () => Date.now();
 const uuid = () => crypto.randomUUID();
 const norm = (s) => String(s || '').trim();
+const dec = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 const normKuerzel = (s) => norm(s).toLowerCase().replace(/[^a-z0-9äöüéèàç._-]/g, '');
 
 function corsHeaders(request, env) {
@@ -35,12 +36,22 @@ function corsHeaders(request, env) {
   return {
     'Access-Control-Allow-Origin': ok ? origin : allowed[0] || '*',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Filename',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,X-Filename,X-Title',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin'
   };
 }
 
+async function hmacHex(env, msg) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(env.SESSION_SECRET || env.ENC_KEY || 'x')), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+// Signierter Link auf ein Dokument (ohne Kopfzeile öffenbar, z. B. in neuem Tab); gültig bis exp (ms)
+async function docLink(env, request, id, exp) {
+  const origin = new URL(request.url).origin;
+  return `${origin}/api/doc/${encodeURIComponent(id)}?exp=${exp}&sig=${await hmacHex(env, id + '.' + exp)}`;
+}
 async function sha256hex(s) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -110,14 +121,14 @@ function pickLang(v, lang) {
 
 async function loadChecklistsForPilot(env, user) {
   const rows = (await env.DB.prepare(`
-    SELECT c.id, c.group_id, c.art, c.ist_notfall, v.id AS version_id, v.version, v.inhalt_de, v.inhalt_fr, v.inhalt_en,
+    SELECT c.id, c.group_id, c.art, c.ist_notfall, c.reihenfolge, c.created_at, v.id AS version_id, v.version, v.inhalt_de, v.inhalt_fr, v.inhalt_en,
            v.status_fr, v.status_en, v.item_count, v.released_at
     FROM checklists c JOIN checklist_versions v ON v.id = c.current_version_id
-    WHERE c.deleted_at IS NULL AND v.status = 'freigegeben'`).all()).results || [];
+    WHERE c.deleted_at IS NULL AND v.status = 'freigegeben' ORDER BY c.reihenfolge, c.created_at`).all()).results || [];
   return rows.map((r) => {
     const pick = pickLang(r, user.sprache || 'de');
     return {
-      id: r.id, group_id: r.group_id, art: r.art, ist_notfall: !!r.ist_notfall,
+      id: r.id, group_id: r.group_id, art: r.art, ist_notfall: !!r.ist_notfall, reihenfolge: r.reihenfolge || 0, created_at: r.created_at,
       version_id: r.version_id, version: r.version, item_count: r.item_count, released_at: r.released_at,
       title: pick.content.title || '', content: pick.content, lang: pick.lang, fallback: pick.fallback
     };
@@ -165,17 +176,21 @@ async function handleLogin(env, request) {
   return json({ ok: true, token, existed, user: pubUser(u) });
 }
 
-async function handleBootstrap(env, user, since) {
+async function handleBootstrap(env, user, since, request) {
   const settings = await getSettings(env);
   await autoAbort(env, user.id, parseInt(settings.abbruch_minuten || '60', 10));
-  const [groups, types, values, vars, balloons, favs] = await Promise.all([
+  const [groups, types, values, vars, balloons, favs, docs] = await Promise.all([
     env.DB.prepare('SELECT * FROM groups ORDER BY reihenfolge').all(),
     env.DB.prepare('SELECT * FROM balloon_types WHERE aktiv=1 ORDER BY art, name').all(),
     env.DB.prepare('SELECT * FROM balloon_type_values').all(),
     env.DB.prepare('SELECT * FROM variables ORDER BY key').all(),
     env.DB.prepare('SELECT * FROM balloons WHERE user_id=? ORDER BY created_at').bind(user.id).all(),
-    env.DB.prepare('SELECT * FROM favorites WHERE user_id=?').bind(user.id).all()
+    env.DB.prepare('SELECT * FROM favorites WHERE user_id=?').bind(user.id).all(),
+    env.DB.prepare('SELECT d.id, d.checklist_id, d.titel, d.dateiname, d.mime, d.groesse, d.reihenfolge FROM documents d JOIN checklists c ON c.id=d.checklist_id WHERE d.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY d.reihenfolge, d.created_at').all()
   ]);
+  const exp = now() + 7 * 86400000; // Links eine Woche gültig; Bootstrap erneuert sie bei jedem Öffnen
+  const documents = [];
+  for (const d of docs.results || []) documents.push({ ...d, url: await docLink(env, request, d.id, exp) });
   const valuesByType = {};
   for (const v of values.results || []) (valuesByType[v.balloon_type_id] ||= {})[v.variable_key] = v.wert;
   const checklists = await loadChecklistsForPilot(env, user);
@@ -185,6 +200,7 @@ async function handleBootstrap(env, user, since) {
     ok: true, serverTime: now(), user: pubUser(user),
     settings: { app_name: settings.app_name || 'SBA Checklisten', warn_items: +settings.warn_items || 12, abbruch_minuten: +settings.abbruch_minuten || 60, aufbewahrung_jahre: +settings.aufbewahrung_jahre || 3 },
     groups: groups.results || [],
+    documents,
     balloonTypes: (types.results || []).map((t) => ({ ...t, values: valuesByType[t.id] || {} })),
     variables: vars.results || [],
     balloons: balloons.results || [],
@@ -241,7 +257,7 @@ async function handleMySessions(env, user, url) {
   const from = parseInt(url.searchParams.get('from') || '0', 10) || 0;
   const to = parseInt(url.searchParams.get('to') || '0', 10) || now() + 86400000;
   const rows = (await env.DB.prepare(`
-    SELECT s.*, v.inhalt_de, v.inhalt_fr, v.inhalt_en, v.version, b.kennzeichen, bt.name AS muster, bt.art AS ballon_art
+    SELECT s.*, v.checklist_id, v.inhalt_de, v.inhalt_fr, v.inhalt_en, v.version, b.kennzeichen, bt.name AS muster, bt.art AS ballon_art
     FROM sessions s JOIN checklist_versions v ON v.id = s.checklist_version_id
     LEFT JOIN balloons b ON b.id = s.balloon_id LEFT JOIN balloon_types bt ON bt.id = b.balloon_type_id
     WHERE s.user_id=? AND s.start_server BETWEEN ? AND ? ORDER BY s.start_server DESC LIMIT 500`).bind(user.id, from, to).all()).results || [];
@@ -250,7 +266,7 @@ async function handleMySessions(env, user, url) {
 function sessionRow(r, lang) {
   const t = parseContent(r['inhalt_' + lang] || r.inhalt_de).title || parseContent(r.inhalt_de).title || '';
   return {
-    id: r.id, user_id: r.user_id, kuerzel: r.kuerzel, name: r.name, title: t, version: r.version, kennzeichen: r.kennzeichen, muster: r.muster, ballon_art: r.ballon_art,
+    id: r.id, user_id: r.user_id, kuerzel: r.kuerzel, name: r.name, checklist_id: r.checklist_id, title: t, version: r.version, kennzeichen: r.kennzeichen, muster: r.muster, ballon_art: r.ballon_art,
     start_device: r.start_device, start_server: r.start_server, end_device: r.end_device, end_server: r.end_server, status: r.status,
     pos_start: r.pos_start_lat != null ? { lat: r.pos_start_lat, lon: r.pos_start_lon, acc: r.pos_start_acc } : null,
     pos_end: r.pos_end_lat != null ? { lat: r.pos_end_lat, lon: r.pos_end_lon, acc: r.pos_end_acc } : null,
@@ -261,15 +277,15 @@ function sessionRow(r, lang) {
 // ---------- Admin ----------
 async function adminChecklists(env) {
   const rows = (await env.DB.prepare(`
-    SELECT c.id, c.group_id, c.art, c.ist_notfall, c.current_version_id, c.created_at, c.deleted_at,
+    SELECT c.id, c.group_id, c.art, c.ist_notfall, c.reihenfolge, c.current_version_id, c.created_at, c.deleted_at,
            v.id AS version_id, v.version, v.status, v.inhalt_de, v.inhalt_fr, v.inhalt_en, v.status_fr, v.status_en, v.item_count, v.created_at AS v_created_at, v.created_by, v.released_at, v.change_note,
            u.kuerzel AS created_by_kuerzel
     FROM checklists c JOIN checklist_versions v ON v.checklist_id = c.id
     LEFT JOIN users u ON u.id = v.created_by
-    WHERE c.deleted_at IS NULL ORDER BY c.created_at, v.version`).all()).results || [];
+    WHERE c.deleted_at IS NULL ORDER BY c.reihenfolge, c.created_at, v.version`).all()).results || [];
   const map = new Map();
   for (const r of rows) {
-    if (!map.has(r.id)) map.set(r.id, { id: r.id, group_id: r.group_id, art: r.art, ist_notfall: !!r.ist_notfall, current_version_id: r.current_version_id, versions: [] });
+    if (!map.has(r.id)) map.set(r.id, { id: r.id, group_id: r.group_id, art: r.art, ist_notfall: !!r.ist_notfall, reihenfolge: r.reihenfolge || 0, created_at: r.created_at, current_version_id: r.current_version_id, versions: [] });
     map.get(r.id).versions.push({
       id: r.version_id, version: r.version, status: r.status, title: parseContent(r.inhalt_de).title || '', item_count: r.item_count,
       status_fr: r.status_fr, status_en: r.status_en, created_at: r.v_created_at, created_by: r.created_by_kuerzel, released_at: r.released_at, change_note: r.change_note
@@ -277,7 +293,9 @@ async function adminChecklists(env) {
   }
   const usage = (await env.DB.prepare(`SELECT v.checklist_id, COUNT(*) AS n FROM sessions s JOIN checklist_versions v ON v.id=s.checklist_version_id GROUP BY v.checklist_id`).all()).results || [];
   const useMap = Object.fromEntries(usage.map((u) => [u.checklist_id, u.n]));
-  return [...map.values()].map((c) => ({ ...c, sessions: useMap[c.id] || 0 }));
+  const docs = (await env.DB.prepare('SELECT checklist_id, COUNT(*) AS n FROM documents WHERE deleted_at IS NULL GROUP BY checklist_id').all()).results || [];
+  const docMap = Object.fromEntries(docs.map((d) => [d.checklist_id, d.n]));
+  return [...map.values()].map((c) => ({ ...c, sessions: useMap[c.id] || 0, documents: docMap[c.id] || 0 }));
 }
 
 async function groupCount(env, groupId) {
@@ -308,6 +326,12 @@ async function handleAdmin(env, user, request, url, p) {
     return json({ ok: true, id: cid, version_id: vid });
   }
 
+  if (p === '/api/admin/checklists/order' && m === 'PUT') {
+    const b = await readJson(request) || {};
+    const ids = Array.isArray(b.ids) ? b.ids : [];
+    if (ids.length) await env.DB.batch(ids.map((id, i) => env.DB.prepare('UPDATE checklists SET reihenfolge=? WHERE id=?').bind(i + 1, id)));
+    return json({ ok: true });
+  }
   let mm;
   if ((mm = /^\/api\/admin\/checklists\/([^/]+)$/.exec(p))) {
     const cid = mm[1];
@@ -381,10 +405,70 @@ async function handleAdmin(env, user, request, url, p) {
     for (const g of groups) g.count = await groupCount(env, g.id);
     return json({ ok: true, groups });
   }
+  if (p === '/api/admin/groups' && m === 'POST') {
+    const b = await readJson(request) || {};
+    if (!norm(b.name_de)) return err('angaben');
+    const key = (norm(b.key) || norm(b.name_de)).toLowerCase().replace(/[äöü]/g, (c) => ({ ä: 'ae', ö: 'oe', ü: 'ue' }[c])).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const mx = await env.DB.prepare('SELECT MAX(reihenfolge) AS r FROM groups').first();
+    const id = 'g' + uuid().slice(0, 8);
+    await env.DB.prepare('INSERT INTO groups (id,key,reihenfolge,name_de,name_fr,name_en,limit_count,ist_notfall,ist_phase) VALUES (?,?,?,?,?,?,?,0,?)')
+      .bind(id, key, (mx?.r || 0) + 1, norm(b.name_de), norm(b.name_fr) || norm(b.name_de), norm(b.name_en) || norm(b.name_de), b.limit_count != null ? +b.limit_count : 0, b.ist_phase != null ? (b.ist_phase ? 1 : 0) : 1).run();
+    return json({ ok: true, id });
+  }
+  if (p === '/api/admin/groups/order' && m === 'PUT') {
+    const b = await readJson(request) || {};
+    const ids = Array.isArray(b.ids) ? b.ids : [];
+    if (ids.length) await env.DB.batch(ids.map((id, i) => env.DB.prepare('UPDATE groups SET reihenfolge=? WHERE id=?').bind(i + 1, id)));
+    return json({ ok: true });
+  }
+
   if ((mm = /^\/api\/admin\/groups\/([^/]+)$/.exec(p)) && m === 'PUT') {
     const b = await readJson(request) || {};
-    await env.DB.prepare('UPDATE groups SET limit_count=COALESCE(?,limit_count), name_de=COALESCE(?,name_de), name_fr=COALESCE(?,name_fr), name_en=COALESCE(?,name_en) WHERE id=?')
-      .bind(b.limit_count != null ? +b.limit_count : null, norm(b.name_de) || null, norm(b.name_fr) || null, norm(b.name_en) || null, mm[1]).run();
+    await env.DB.prepare('UPDATE groups SET limit_count=COALESCE(?,limit_count), name_de=COALESCE(?,name_de), name_fr=COALESCE(?,name_fr), name_en=COALESCE(?,name_en), reihenfolge=COALESCE(?,reihenfolge), ist_phase=COALESCE(?,ist_phase) WHERE id=?')
+      .bind(b.limit_count != null ? +b.limit_count : null, norm(b.name_de) || null, norm(b.name_fr) || null, norm(b.name_en) || null, b.reihenfolge != null ? +b.reihenfolge : null, b.ist_phase != null ? (b.ist_phase ? 1 : 0) : null, mm[1]).run();
+    return json({ ok: true });
+  }
+  if ((mm = /^\/api\/admin\/groups\/([^/]+)$/.exec(p)) && m === 'DELETE') {
+    const g = await env.DB.prepare('SELECT * FROM groups WHERE id=?').bind(mm[1]).first();
+    if (!g) return err('nicht_gefunden', 404);
+    if (g.ist_notfall) return err('notfall_nicht_loeschbar', 409);
+    if (await groupCount(env, g.id)) return err('gruppe_nicht_leer', 409);
+    await env.DB.prepare('DELETE FROM groups WHERE id=?').bind(g.id).run();
+    return json({ ok: true });
+  }
+  // Vertiefende Dokumente je Checkliste
+  if (p === '/api/admin/documents' && m === 'GET') {
+    const cid = url.searchParams.get('checklist_id');
+    const rows = (await env.DB.prepare(cid ? 'SELECT * FROM documents WHERE deleted_at IS NULL AND checklist_id=? ORDER BY reihenfolge, created_at' : 'SELECT * FROM documents WHERE deleted_at IS NULL ORDER BY checklist_id, reihenfolge, created_at').bind(...(cid ? [cid] : [])).all()).results || [];
+    const exp = now() + 86400000; const out = [];
+    for (const d of rows) out.push({ ...d, url: await docLink(env, request, d.id, exp) });
+    return json({ ok: true, documents: out });
+  }
+  if (p === '/api/admin/documents' && m === 'POST') {
+    const cid = url.searchParams.get('checklist_id');
+    const c = cid && await env.DB.prepare('SELECT id FROM checklists WHERE id=? AND deleted_at IS NULL').bind(cid).first();
+    if (!c) return err('checkliste_fehlt');
+    const name = dec(norm(request.headers.get('X-Filename') || 'dokument')).replace(/[\\/:*?"<>|]/g, '_');
+    const titel = dec(norm(request.headers.get('X-Title') || '')) || name.replace(/\.[^.]+$/, '');
+    const mime = request.headers.get('Content-Type') || 'application/octet-stream';
+    const id = uuid(); const key = `documents/${id}/${name}`;
+    const buf = await request.arrayBuffer();
+    if (!buf.byteLength) return err('datei_leer');
+    if (buf.byteLength > 25 * 1024 * 1024) return err('datei_zu_gross', 413);
+    await env.FILES.put(key, buf, { httpMetadata: { contentType: mime } });
+    const mx = await env.DB.prepare('SELECT MAX(reihenfolge) AS r FROM documents WHERE checklist_id=? AND deleted_at IS NULL').bind(cid).first();
+    await env.DB.prepare('INSERT INTO documents (id,checklist_id,titel,dateiname,r2_key,mime,groesse,reihenfolge,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .bind(id, cid, titel, name, key, mime, buf.byteLength, (mx?.r || 0) + 1, user.id, now()).run();
+    return json({ ok: true, id });
+  }
+  if ((mm = /^\/api\/admin\/documents\/([^/]+)$/.exec(p)) && (m === 'PUT' || m === 'DELETE')) {
+    const d = await env.DB.prepare('SELECT * FROM documents WHERE id=? AND deleted_at IS NULL').bind(mm[1]).first();
+    if (!d) return err('nicht_gefunden', 404);
+    if (m === 'DELETE') { await env.DB.prepare('UPDATE documents SET deleted_at=? WHERE id=?').bind(now(), d.id).run(); return json({ ok: true }); }
+    const b = await readJson(request) || {};
+    let cid = null;
+    if (b.checklist_id && b.checklist_id !== d.checklist_id) { const c = await env.DB.prepare('SELECT id FROM checklists WHERE id=? AND deleted_at IS NULL').bind(b.checklist_id).first(); if (!c) return err('checkliste_fehlt'); cid = c.id; }
+    await env.DB.prepare('UPDATE documents SET titel=COALESCE(?,titel), reihenfolge=COALESCE(?,reihenfolge), checklist_id=COALESCE(?,checklist_id) WHERE id=?').bind(norm(b.titel) || null, b.reihenfolge != null ? +b.reihenfolge : null, cid, d.id).run();
     return json({ ok: true });
   }
 
@@ -446,7 +530,7 @@ async function handleAdmin(env, user, request, url, p) {
   }
   if ((mm = /^\/api\/admin\/users\/([^/]+)\/sessions$/.exec(p)) && m === 'GET') {
     if (!isSuper(user)) return err('nur_supermaster', 403);
-    const rows = (await env.DB.prepare(`SELECT s.*, u.kuerzel, u.name, v.inhalt_de, v.inhalt_fr, v.inhalt_en, v.version, b.kennzeichen, bt.name AS muster, bt.art AS ballon_art
+    const rows = (await env.DB.prepare(`SELECT s.*, u.kuerzel, u.name, v.checklist_id, v.inhalt_de, v.inhalt_fr, v.inhalt_en, v.version, b.kennzeichen, bt.name AS muster, bt.art AS ballon_art
       FROM sessions s JOIN users u ON u.id=s.user_id JOIN checklist_versions v ON v.id=s.checklist_version_id
       LEFT JOIN balloons b ON b.id=s.balloon_id LEFT JOIN balloon_types bt ON bt.id=b.balloon_type_id
       WHERE s.user_id=? ORDER BY s.start_server DESC LIMIT 1000`).bind(mm[1]).all()).results || [];
@@ -490,7 +574,7 @@ async function handleAdmin(env, user, request, url, p) {
 
   // Dateien (Importoriginale) in R2
   if (p === '/api/admin/files' && m === 'POST') {
-    const name = norm(request.headers.get('X-Filename') || 'datei').replace(/[^\w.\-äöüÄÖÜ ]/g, '_');
+    const name = dec(norm(request.headers.get('X-Filename') || 'datei')).replace(/[^\w.\-äöüÄÖÜéèàç ]/g, '_');
     const key = `imports/${Date.now()}-${name}`;
     await env.FILES.put(key, request.body, { httpMetadata: { contentType: request.headers.get('Content-Type') || 'application/octet-stream' } });
     return json({ ok: true, key });
@@ -554,6 +638,17 @@ export default {
         return withCors(json({ ok: true, app: 'checklists-api', version: env.APP_VERSION || '', db, time: now() }));
       }
       if (p === '/api/login' && request.method === 'POST') return withCors(await handleLogin(env, request));
+      let dm;
+      if ((dm = /^\/api\/doc\/([^/]+)$/.exec(p)) && request.method === 'GET') {
+        const id = decodeURIComponent(dm[1]); const exp = parseInt(url.searchParams.get('exp') || '0', 10); const sig = url.searchParams.get('sig') || '';
+        if (!exp || exp < now() || sig !== await hmacHex(env, id + '.' + exp)) return withCors(err('link_ungueltig', 403));
+        const d = await env.DB.prepare('SELECT * FROM documents WHERE id=? AND deleted_at IS NULL').bind(id).first();
+        if (!d) return withCors(err('nicht_gefunden', 404));
+        const obj = await env.FILES.get(d.r2_key);
+        if (!obj) return withCors(err('datei_fehlt', 404));
+        const inline = /^(application\/pdf|image\/|text\/)/.test(d.mime || '');
+        return withCors(new Response(obj.body, { headers: { 'Content-Type': d.mime || 'application/octet-stream', 'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(d.dateiname)}`, 'Cache-Control': 'private, max-age=3600' } }));
+      }
       if (!p.startsWith('/api/')) return withCors(json({ ok: true, app: 'checklists-api', hint: 'API unter /api/…' }));
 
       const user = await userByToken(env, request);
@@ -578,7 +673,7 @@ export default {
       }
       if (p === '/api/logout' && m === 'POST') { await env.DB.prepare('DELETE FROM devices WHERE id=?').bind(user.device_id).run(); return withCors(json({ ok: true })); }
       if (p === '/api/installed' && m === 'POST') { await env.DB.prepare('UPDATE devices SET installed=1 WHERE id=?').bind(user.device_id).run(); return withCors(json({ ok: true })); }
-      if (p === '/api/bootstrap' && m === 'GET') return withCors(await handleBootstrap(env, user, url.searchParams.get('since')));
+      if (p === '/api/bootstrap' && m === 'GET') return withCors(await handleBootstrap(env, user, url.searchParams.get('since'), request));
 
       if (p === '/api/favorites' && m === 'POST') {
         const b = await readJson(request) || {};

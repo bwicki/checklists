@@ -67,8 +67,25 @@ CREATE TABLE IF NOT EXISTS groups (
   name_fr       TEXT NOT NULL,
   name_en       TEXT NOT NULL,
   limit_count   INTEGER NOT NULL DEFAULT 4,      -- 0 = kein Limit
-  ist_notfall   INTEGER NOT NULL DEFAULT 0
+  ist_notfall   INTEGER NOT NULL DEFAULT 0,
+  ist_phase     INTEGER NOT NULL DEFAULT 1       -- 1 = Flugphase (zählt für «Nächster Schritt»), 0 = Referenzgruppe (Grundlagen, Sonderverfahren)
 );
+
+-- Vertiefende Dokumente je Checkliste (nicht Teil der Liste; Datei in R2)
+CREATE TABLE IF NOT EXISTS documents (
+  id            TEXT PRIMARY KEY,
+  checklist_id  TEXT NOT NULL REFERENCES checklists(id),
+  titel         TEXT NOT NULL,
+  dateiname     TEXT NOT NULL,
+  r2_key        TEXT NOT NULL,
+  mime          TEXT,
+  groesse       INTEGER,
+  reihenfolge   INTEGER NOT NULL DEFAULT 0,
+  created_by    TEXT REFERENCES users(id),
+  created_at    INTEGER NOT NULL,
+  deleted_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_documents_checklist ON documents(checklist_id);
 
 CREATE TABLE IF NOT EXISTS checklists (
   id                 TEXT PRIMARY KEY,
@@ -78,6 +95,7 @@ CREATE TABLE IF NOT EXISTS checklists (
   current_version_id TEXT,                          -- zuletzt freigegebene Version
   created_by         TEXT REFERENCES users(id),
   created_at         INTEGER NOT NULL,
+  reihenfolge        INTEGER NOT NULL DEFAULT 0,   -- Reihenfolge innerhalb der Gruppe
   deleted_at         INTEGER                        -- Soft-Delete; Protokolle bleiben gültig
 );
 CREATE INDEX IF NOT EXISTS idx_checklists_group ON checklists(group_id);

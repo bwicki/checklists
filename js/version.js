@@ -3,8 +3,8 @@
  */
 export const APP = {
   name: 'SBA Checklisten',
-  version: '0.1.0',
-  date: '2026-10-24',
-  cache: 'checklists-v0.1.0',
+  version: '0.2.0',
+  date: '2026-10-25',
+  cache: 'checklists-v0.2.0',
   repo: 'https://github.com/bwicki/checklists',
 };

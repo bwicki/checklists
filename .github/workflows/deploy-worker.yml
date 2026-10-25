@@ -37,6 +37,11 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npx wrangler d1 execute checklists --remote --yes --file=schema.sql
+          # Migrationen (je eine Anweisung; Fehler = schon eingespielt)
+          for m in migrations/*.sql; do
+            [ -f "$m" ] || continue
+            npx wrangler d1 execute checklists --remote --yes --file="$m" >/dev/null 2>&1 && echo "Migration $m eingespielt" || echo "Migration $m übersprungen (schon vorhanden)"
+          done
       - name: Deploy
         if: steps.check.outputs.ready == 'true'
         uses: cloudflare/wrangler-action@v3

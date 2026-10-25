@@ -77,11 +77,17 @@ const I = {
   trash: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   logout: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M12 3h7v18h-7"/></svg>',
   info: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
-  install: '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 8v7M9 12l3 3 3-3"/></svg>'
+  install: '<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 8v7M9 12l3 3 3-3"/></svg>',
+  book: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/><path d="M8 7h7M8 11h7"/></svg>',
+  ext: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'
 };
 
 // ---------- Daten ----------
-const data = () => store.get().data || { groups: [], balloonTypes: [], variables: [], balloons: [], favorites: [], checklists: [], settings: {} };
+const data = () => store.get().data || { groups: [], balloonTypes: [], variables: [], balloons: [], favorites: [], checklists: [], documents: [], settings: {} };
+const isPhaseGroup = (g) => g && !g.ist_notfall && g.ist_phase !== 0;
+const docsFor = (checklistId) => (data().documents || []).filter((d) => d.checklist_id === checklistId);
+const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? Math.round(n / 1024) + ' KB' : (n || 0) + ' B');
+const docKind = (d) => (/pdf/.test(d.mime || '') ? 'PDF' : /word|officedocument\.wordprocessingml/.test(d.mime || '') || /\.docx?$/i.test(d.dateiname) ? 'Word' : /sheet|excel/.test(d.mime || '') || /\.xlsx?$/i.test(d.dateiname) ? 'Excel' : /image/.test(d.mime || '') ? 'Bild' : (d.dateiname.split('.').pop() || '').toUpperCase());
 const user = () => store.get().user;
 function activeBalloon() {
   const d = data(); const id = store.get().activeBalloonId;
@@ -93,7 +99,7 @@ function visibleLists() {
   const d = data();
   const order = Object.fromEntries(d.groups.map((g) => [g.id, g.reihenfolge]));
   return d.checklists.filter((c) => !ty || c.art === 'beide' || c.art === ty.art)
-    .sort((a, b2) => (order[a.group_id] - order[b2.group_id]) || a.title.localeCompare(b2.title));
+    .sort((a, b2) => (order[a.group_id] - order[b2.group_id]) || ((a.reihenfolge || 0) - (b2.reihenfolge || 0)) || ((a.created_at || 0) - (b2.created_at || 0)) || a.title.localeCompare(b2.title));
 }
 const findList = (id) => data().checklists.find((c) => c.id === id);
 const groupName = (g) => (g ? (g['name_' + getLang()] || g.name_de) : '');
@@ -121,7 +127,7 @@ function newSession(cl) {
 }
 const serialize = (s) => ({ id: s.id, checklist_version_id: s.checklist_version_id, balloon_id: s.balloon_id, sprache: s.sprache, start_device: s.start_device, end_device: s.end_device || null,
   status: s.status, pos_start: s.pos_start, pos_end: s.pos_end, items_total: s.items_total, items_done: Object.keys(s.items).length, items: Object.entries(s.items).map(([key, done_at]) => ({ key, done_at })) });
-const logEntry = (s) => ({ id: s.id, title: s.title, version: s.version, kennzeichen: s.kennzeichen, start_device: s.start_device, end_device: s.end_device || null, status: s.status, pos_start: s.pos_start, pos_end: s.pos_end, items_total: s.items_total, items_done: Object.keys(s.items).length });
+const logEntry = (s) => ({ id: s.id, checklist_id: s.checklist_id, title: s.title, version: s.version, kennzeichen: s.kennzeichen, start_device: s.start_device, end_device: s.end_device || null, status: s.status, pos_start: s.pos_start, pos_end: s.pos_end, items_total: s.items_total, items_done: Object.keys(s.items).length });
 function lastTick(s) { const ticks = Object.values(s.items); return Math.max(s.start_device, ...(ticks.length ? ticks : [0])); }
 function autoAbort() {
   const st = store.get(); const limit = (data().settings.abbruch_minuten || 60) * 60000; let changed = false;
@@ -183,7 +189,7 @@ async function refresh(silent = true) {
     store.set({ data: rest, dataAt: Date.now(), user: r.user, lastSeen: r.serverTime });
     if (r.user.sprache && r.user.sprache !== getLang()) { setLang(r.user.sprache); store.set({ lang: r.user.sprache }); }
     if (wn && wn.length && !firstLoad) { whatsNew = wn; whatsNewSince = prevSeen; }
-    try { const sess = await api.sessions(0, 0); store.logReplace(sess.sessions.map((x) => ({ id: x.id, title: x.title, version: x.version, kennzeichen: x.kennzeichen, start_device: x.start_device || x.start_server, end_device: x.end_device || x.end_server, status: x.status, pos_start: x.pos_start, pos_end: x.pos_end, items_total: x.items_total, items_done: x.items_done }))); } catch { /* egal */ }
+    try { const sess = await api.sessions(0, 0); store.logReplace(sess.sessions.map((x) => ({ id: x.id, checklist_id: x.checklist_id, title: x.title, version: x.version, kennzeichen: x.kennzeichen, start_device: x.start_device || x.start_server, end_device: x.end_device || x.end_server, status: x.status, pos_start: x.pos_start, pos_end: x.pos_end, items_total: x.items_total, items_done: x.items_done }))); } catch { /* egal */ }
     await syncQueue();
     if (!silent) toast(t('saved'));
     render();
@@ -224,6 +230,7 @@ function render() {
   else if (route.name === 'emergency') html = viewEmergency();
   else if (route.name === 'log') html = viewLog();
   else if (route.name === 'more') html = viewMore();
+  else if (route.name === 'docs') html = viewDocs();
   else html = viewHome();
   if (route.modal) html += route.modal();
   if (whatsNew && token && route.name === 'home' && !route.modal) html += viewWhatsNew();
@@ -295,18 +302,21 @@ function computeNext() {
   const d = data(); const b = activeBalloon();
   if (!d.checklists.length) return { kind: 'none' };
   if (!b && d.balloonTypes.length) return { kind: 'nobal' };
-  const lists = visibleLists().filter((c) => !c.ist_notfall);
+  const phaseIds = new Set(d.groups.filter(isPhaseGroup).map((g) => g.id));
+  const lists = visibleLists().filter((c) => !c.ist_notfall && phaseIds.has(c.group_id));
   if (!lists.length) return { kind: 'none' };
   const open = store.get().open;
   const o = lists.find((c) => open[c.id]);
   if (o) { const s = open[o.id]; return { kind: 'resume', list: o, sub: t('next_sub_progress', { done: Object.keys(s.items).length, n: s.items_total }) }; }
+  // Heute erledigte Listen (abgeschlossen oder unvollständig) in der Reihenfolge überspringen; nach der zuletzt erledigten weiterfahren
   const today = store.get().log.filter((e) => sameDay(e.start_device, Date.now()) && (e.status === 'abgeschlossen' || e.status === 'unvollstaendig')).sort((a, b2) => b2.start_device - a.start_device);
   if (today.length) {
-    const last = today[0]; const lastList = d.checklists.find((c) => c.title === last.title) || null;
-    const order = Object.fromEntries(d.groups.map((g) => [g.id, g.reihenfolge]));
-    const lastOrder = lastList ? order[lastList.group_id] : -1;
-    const nxt = lists.find((c) => order[c.group_id] > lastOrder);
-    if (nxt) return { kind: 'next', list: nxt, sub: t('next_sub_done', { title: last.title, time: fmtTime(last.end_device || last.start_device), n: nxt.item_count }) };
+    const last = today[0];
+    const idOf = (e) => e.checklist_id || (d.checklists.find((c) => c.title === e.title) || {}).id;
+    const doneIds = new Set(today.map(idOf).filter(Boolean));
+    const lastIdx = lists.findIndex((c) => c.id === idOf(last));
+    const after = lists.slice(lastIdx + 1).find((c) => !doneIds.has(c.id)) || lists.find((c) => !doneIds.has(c.id));
+    if (after) return { kind: 'next', list: after, sub: t('next_sub_done', { title: last.title, time: fmtTime(last.end_device || last.start_device), n: after.item_count }) };
   }
   return { kind: 'start', list: lists[0], sub: t('next_sub_items', { n: lists[0].item_count }) };
 }
@@ -325,14 +335,16 @@ function viewHome() {
     ${favs.map(({ c, f }) => `<button type="button" class="row" data-act="open" data-id="${c.id}"><span class="col"><span class="t">${h(c.title)}</span><span class="s">${h(t(c.item_count === 1 ? 'item_one' : 'items', { n: c.item_count }))}${f.last_used ? ' · ' + h(t('last_used', { when: whenLabel(f.last_used) })) : ''}</span></span><span class="chev">${I.chev}</span></button>`).join('')}</div></section>` : '';
 
   const exp = store.get().expanded; const nextGroup = nx.list ? nx.list.group_id : null;
-  const groups = d.groups.filter((g) => !g.ist_notfall);
-  const groupHtml = groups.map((g, gi) => {
+  const renderGroups = (groups) => groups.map((g, gi) => {
     const items = lists.filter((c) => c.group_id === g.id);
     const open = exp[g.id] != null ? exp[g.id] : (g.id === nextGroup);
     const last = gi === groups.length - 1;
     return `<button type="button" class="group" data-act="toggle-group" data-id="${g.id}" aria-expanded="${open}"><span>${h(groupName(g))}</span><span class="n">${items.length}${open ? I.up : I.down}</span></button>
-      ${open ? `<div class="${last ? '' : 'group-last'}">${items.map((c) => `<div class="item"><button type="button" style="flex:1 1 auto;min-height:46px;border:0;background:none;color:inherit;text-align:left;font-size:15px;padding:0" data-act="open" data-id="${c.id}">${h(c.title)}</button>${isFav(c.id) ? `<button type="button" class="star" data-act="fav" data-id="${c.id}" aria-label="${h(t('fav_remove'))}" title="${h(t('fav_remove'))}">${I.star(true)}</button>` : `<button type="button" class="star off" data-act="fav" data-id="${c.id}" aria-label="${h(t('fav_add'))}" title="${h(t('fav_add'))}">${I.star(false)}</button>`}</div>`).join('') || `<div class="item"><span class="nf">–</span></div>`}</div>` : ''}`;
+      ${open ? `<div class="${last ? '' : 'group-last'}">${items.map((c) => `<div class="item"><button type="button" style="flex:1 1 auto;min-height:46px;border:0;background:none;color:inherit;text-align:left;font-size:15px;padding:0" data-act="open" data-id="${c.id}">${h(c.title)}${docsFor(c.id).length ? `<span style="margin-left:6px;color:var(--muted2);vertical-align:middle">${I.book.replace('width="22" height="22"', 'width="14" height="14"')}</span>` : ''}</button>${isFav(c.id) ? `<button type="button" class="star" data-act="fav" data-id="${c.id}" aria-label="${h(t('fav_remove'))}" title="${h(t('fav_remove'))}">${I.star(true)}</button>` : `<button type="button" class="star off" data-act="fav" data-id="${c.id}" aria-label="${h(t('fav_add'))}" title="${h(t('fav_add'))}">${I.star(false)}</button>`}</div>`).join('') || `<div class="item"><span class="nf">–</span></div>`}</div>` : ''}`;
   }).join('');
+  const phaseGroups = d.groups.filter(isPhaseGroup); const refGroups = d.groups.filter((g) => !g.ist_notfall && g.ist_phase === 0);
+  const groupHtml = renderGroups(phaseGroups);
+  const refHtml = refGroups.length ? `<section class="section"><h2>${h(t('reference_lists'))}</h2><div class="card list">${renderGroups(refGroups)}</div></section>` : '';
 
   const balloonBtn = d.balloons.length > 1 ? `<button type="button" class="balloon-btn" data-act="pick-balloon"><span>${h(b.kennzeichen)} · ${h(t(ty ? ty.art : 'beide'))}</span>${I.down}</button>` : (b ? `<span class="sub nowrap">${h(b.kennzeichen)} · ${h(t(ty ? ty.art : 'beide'))}</span>` : '');
   return `<div class="screen">
@@ -342,6 +354,7 @@ function viewHome() {
       ${nextHtml}
       ${favHtml}
       <section class="section"><h2>${h(ty ? t('all_lists', { art: t(ty.art) }) : t('all_lists_any'))}</h2><div class="card list">${groupHtml}</div></section>
+      ${refHtml}
     </main>
     ${nav('home')}</div>`;
 }
@@ -354,6 +367,31 @@ function viewWhatsNew() {
       ${w.is_new && c ? `<button type="button" class="star ${isFav(c.id) ? '' : 'off'}" data-act="fav" data-id="${c.id}" aria-label="${h(t('fav_add'))}" title="${h(t('fav_add'))}" style="color:${isFav(c.id) ? 'var(--amber)' : 'var(--box-border)'};border:0;background:none;width:40px;height:40px">${I.star(isFav(c.id))}</button>` : (c ? `<button type="button" class="linkbtn" data-act="wn-view" data-id="${c.id}">${h(t('wn_view'))}</button>` : '')}</div>`; }).join('')}</div>
     <button type="button" class="btn primary" data-act="wn-close" aria-label="${h(t('understood'))}" title="${h(t('understood'))}">${I.checkBig}</button>
   </section></div>`;
+}
+function docRows(docs) {
+  return docs.map((d) => `<a class="row" href="${h(d.url)}" target="_blank" rel="noopener" ${online ? '' : 'onclick="return false"'} style="${online ? '' : 'opacity:.55'}"><span class="col"><span class="t" style="font-size:16px">${h(d.titel)}</span><span class="s">${h(docKind(d))} · ${h(fmtSize(d.groesse))}</span></span><span class="chev">${I.ext}</span></a>`).join('');
+}
+function viewDocsSheet() {
+  const cl = findList(route.docsFor); const docs = docsFor(route.docsFor);
+  return `<div class="sheet-bg" data-act="close-modal"><div class="sheet" data-stop><h2>${h(t('documents_for', { title: cl ? cl.title : '' }))}</h2>
+    ${online ? '' : `<p class="msg err">${h(t('documents_offline'))}</p>`}
+    ${docs.length ? docRows(docs) : `<p class="msg">${h(t('documents_none'))}</p>`}
+    <button type="button" class="btn secondary" data-act="close-modal" aria-label="${h(t('close'))}" title="${h(t('close'))}">${I.x}</button></div></div>`;
+}
+function viewDocs() {
+  const d = data(); const docs = d.documents || [];
+  const byList = new Map();
+  for (const doc of docs) { const c = findList(doc.checklist_id); if (!c) continue; if (!byList.has(c.id)) byList.set(c.id, { c, docs: [] }); byList.get(c.id).docs.push(doc); }
+  const order = Object.fromEntries(d.groups.map((g) => [g.id, g.reihenfolge]));
+  const groups = [...byList.values()].sort((a, b) => (order[a.c.group_id] - order[b.c.group_id]) || a.c.title.localeCompare(b.c.title));
+  return `<div class="screen">
+    <header class="top">${statusline()}<div class="backrow"><button type="button" class="back" data-act="more" aria-label="${h(t('back'))}">${I.back}</button><h1>${h(t('documents'))}</h1></div></header>
+    ${offlineBanner()}
+    <main class="main">
+      <p class="msg" style="text-align:left">${h(t('documents_hint'))}</p>
+      ${groups.length ? groups.map(({ c, docs: ds }) => `<section class="section"><h2>${h(groupName(d.groups.find((g) => g.id === c.group_id)))} · ${h(c.title)}</h2><div class="card list">${docRows(ds)}</div></section>`).join('') : `<p class="msg">${h(t('documents_none'))}</p>`}
+    </main>
+    ${nav('more')}</div>`;
 }
 function viewBalloonPicker() {
   const d = data(); const cur = activeBalloon();
@@ -377,7 +415,8 @@ function viewChecklist() {
   return `<div class="screen">
     <header class="top">${statusline()}
       <div class="backrow"><button type="button" class="back" data-act="home" aria-label="${h(t('back'))}" title="${h(t('back'))}">${I.back}</button>
-        <div class="col" style="display:flex;flex-direction:column;gap:2px;min-width:0"><h1 style="font-size:21px">${h(cl.title)}</h1><p class="sub">${h([b ? b.kennzeichen : null, ty ? ty.name : null, t('list_version', { v: cl.version })].filter(Boolean).join(' · '))}</p></div></div>
+        <div class="col" style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto"><h1 style="font-size:21px">${h(cl.title)}</h1><p class="sub">${h([b ? b.kennzeichen : null, ty ? ty.name : null, t('list_version', { v: cl.version })].filter(Boolean).join(' · '))}</p></div>
+        ${docsFor(cl.id).length ? `<button type="button" class="iconbtn" data-act="docs" data-id="${cl.id}" aria-label="${h(t('documents'))}" title="${h(t('documents'))}" style="position:relative">${I.book}<span style="position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;border-radius:9px;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px">${docsFor(cl.id).length}</span></button>` : ''}</div>
       <div class="progress"><div class="l"><span>${h(t('progress'))}</span><span class="nowrap">${h(t('of', { done, n: total }))}</span></div><div class="bar"><div style="width:${pct}%"></div></div></div>
     </header>
     ${cl.fallback ? `<div class="banner">${h(t('translation_missing'))}</div>` : ''}
@@ -400,9 +439,10 @@ function viewDone() {
   const d = data(); const b = d.balloons.find((x) => x.id === s.balloon_id); const ty = balloonType(b);
   const done = Object.keys(s.items).length; const ok = s.status === 'abgeschlossen';
   const dur = Math.max(0, Math.round((s.end_device - s.start_device) / 60000));
-  const lists = visibleLists().filter((c) => !c.ist_notfall);
+  const phaseIds = new Set(d.groups.filter(isPhaseGroup).map((g) => g.id));
+  const lists = visibleLists().filter((c) => !c.ist_notfall && phaseIds.has(c.group_id));
   const order = Object.fromEntries(d.groups.map((g) => [g.id, g.reihenfolge]));
-  const cur = findList(s.checklist_id); const nxt = cur ? lists.find((c) => order[c.group_id] > order[cur.group_id]) : null;
+  const curIdx = lists.findIndex((c) => c.id === s.checklist_id); const nxt = curIdx >= 0 ? lists[curIdx + 1] || null : null; void order;
   return `<div class="screen">
     <header class="top">${statusline()}</header>
     <main class="main">
@@ -482,6 +522,7 @@ function viewMore() {
         <div class="set"><span class="col" style="display:flex;flex-direction:column;gap:2px;min-width:0"><span>${h(t('lists_status'))}</span><span class="v" style="white-space:normal">${h(st.dataAt ? t('lists_uptodate', { when: whenLabel(st.dataAt) }) : t('lists_never'))}</span></span><button type="button" class="iconbtn" data-act="refresh" aria-label="${h(t('lists_check'))}" title="${h(t('lists_check'))}">${I.refresh}</button></div>
         ${!isStandalone() ? `<button type="button" class="set" data-act="install"><span>${h(t('install_title'))}</span><span class="v">${I.install}</span></button>` : ''}
       </div></section>
+      <section class="section"><h2>${h(t('documents'))}</h2><div class="card list"><button type="button" class="set" data-act="docs-page"><span class="col" style="display:flex;flex-direction:column;gap:2px"><span>${h(t('documents'))}</span><span class="v" style="white-space:normal">${h(t('documents_hint'))}</span></span><span class="v">${(d.documents || []).length}${I.chev}</span></button></div></section>
       ${(u.rolle === 'admin' || u.rolle === 'supermaster') ? `<a class="btn secondary" href="admin.html">Admin</a>` : ''}
       <button type="button" class="btn danger" data-act="logout" aria-label="${h(t('logout'))}" title="${h(t('logout'))}">${I.logout}<span>${h(t('logout'))}</span></button>
       <p class="footnote">${h(APP.name)} v${APP.version} · checklists.wicki.aero</p>
@@ -528,6 +569,8 @@ $app.addEventListener('click', async (e) => {
     case 'toggle-group': { const st = store.get(); const nx = computeNext(); const cur = st.expanded[id] != null ? st.expanded[id] : !!(nx.list && nx.list.group_id === id); st.expanded[id] = !cur; store.save(); render(); break; }
     case 'fav': { const on = !isFav(id); const d = data(); d.favorites = d.favorites.filter((f) => f.checklist_id !== id); if (on) d.favorites.push({ checklist_id: id, source: 'nutzer', last_used: null }); store.save(); render(); api.favorite(id, on).catch(() => null); break; }
     case 'pick-balloon': route.modal = viewBalloonPicker; render(); break;
+    case 'docs': route.docsFor = id; route.modal = viewDocsSheet; render(); break;
+    case 'docs-page': go('docs'); break;
     case 'set-balloon': { store.set({ activeBalloonId: id }); const d = data(); d.balloons.forEach((b) => { b.aktiv = b.id === id ? 1 : 0; }); store.save(); closeModal(); api.updateBalloon(id, { aktiv: true }).catch(() => null); break; }
     case 'del-balloon': confirmModal(t('remove_balloon') + ' ' + (data().balloons.find((b) => b.id === id) || {}).kennzeichen + '?', async () => { const d = data(); d.balloons = d.balloons.filter((b) => b.id !== id); if (store.get().activeBalloonId === id) store.set({ activeBalloonId: null }); store.save(); closeModal(); try { await api.deleteBalloon(id); } catch { /* egal */ } }); break;
     case 'add-balloon': {

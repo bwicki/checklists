@@ -1,0 +1,38 @@
+# Lädt den SBA-Ausgangsinhalt (Checklisten-Entwürfe, Variablen, Ballonmuster, Dokumente) in die Produktion.
+# Manuell starten: Actions → «Seed SBA content» → Run workflow. Wiederholbar: Bestehendes bleibt unverändert
+# (INSERT OR IGNORE); Dateien in R2 werden überschrieben.
+name: Seed SBA content
+on:
+  workflow_dispatch:
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Seed erzeugen und einspielen
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm ci --no-audit --no-fund
+          node seed/build-seed.mjs
+          while read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              *.pdf) ct="application/pdf" ;;
+              *.docx) ct="application/vnd.openxmlformats-officedocument.wordprocessingml.document" ;;
+              *.xlsx) ct="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ;;
+              *.png) ct="image/png" ;;
+              *.jpg|*.jpeg) ct="image/jpeg" ;;
+              *) ct="application/octet-stream" ;;
+            esac
+            echo "R2 ← documents/seed/$f ($ct)"
+            npx wrangler r2 object put "checklists-files/documents/seed/$f" --file="seed/files/$f" --content-type="$ct" --remote
+          done < seed/files.txt
+          npx wrangler d1 execute checklists --remote --yes --file=seed/sba-seed.sql
+          echo "## Seed eingespielt" >> "$GITHUB_STEP_SUMMARY"
+          npx wrangler d1 execute checklists --remote --yes --json --command "SELECT (SELECT COUNT(*) FROM checklists WHERE deleted_at IS NULL) AS checklisten, (SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL) AS dokumente, (SELECT COUNT(*) FROM groups) AS gruppen, (SELECT COUNT(*) FROM variables) AS variablen" | tee -a "$GITHUB_STEP_SUMMARY"

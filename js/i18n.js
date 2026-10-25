@@ -52,7 +52,9 @@ const S = {
     translation_missing: 'Noch nicht übersetzt – deutsche Fassung', note: 'Hinweis',
     print_title: 'Protokoll {kuerzel}', print_range: 'Zeitraum', print_generated: 'Erstellt {when} LT',
     group_vorbereitung: 'Vorbereitung', group_vor_dem_start: 'Vor dem Start', group_start: 'Start', group_fahrt: 'Fahrt', group_landung: 'Landung', group_nach_der_fahrt: 'Nach der Fahrt', group_notfall: 'Notfall',
-    update_available: 'Neue App-Version – antippen zum Aktualisieren.'
+    update_available: 'Neue App-Version – antippen zum Aktualisieren.',
+    reference_lists: 'Grundlagen und Sonderverfahren', documents: 'Dokumente', documents_for: 'Dokumente zu «{title}»', documents_none: 'Noch keine Dokumente hinterlegt.',
+    documents_hint: 'Vertiefende Unterlagen zu den Checklisten – zum Nachlesen, nicht Teil der Liste. Öffnen braucht Netz.', documents_offline: 'Ohne Netz können Dokumente nicht geöffnet werden.', open_doc: 'Öffnen'
   },
   fr: {
     app: 'SBA Checklists', checklists: 'Checklists',
@@ -98,7 +100,9 @@ const S = {
     translation_missing: 'Pas encore traduite – version allemande', note: 'Remarque',
     print_title: 'Journal {kuerzel}', print_range: 'Période', print_generated: 'Créé le {when} LT',
     group_vorbereitung: 'Préparation', group_vor_dem_start: 'Avant le décollage', group_start: 'Décollage', group_fahrt: 'Vol', group_landung: 'Atterrissage', group_nach_der_fahrt: 'Après le vol', group_notfall: 'Urgence',
-    update_available: 'Nouvelle version de l’app – touche pour mettre à jour.'
+    update_available: 'Nouvelle version de l’app – touche pour mettre à jour.',
+    reference_lists: 'Bases et procédures spéciales', documents: 'Documents', documents_for: 'Documents pour «{title}»', documents_none: 'Aucun document pour l’instant.',
+    documents_hint: 'Documents d’approfondissement liés aux checklists – à consulter, pas partie de la liste. L’ouverture nécessite le réseau.', documents_offline: 'Hors ligne, les documents ne peuvent pas être ouverts.', open_doc: 'Ouvrir'
   },
   en: {
     app: 'SBA Checklists', checklists: 'Checklists',
@@ -144,7 +148,9 @@ const S = {
     translation_missing: 'Not translated yet – German version', note: 'Note',
     print_title: 'Log {kuerzel}', print_range: 'Period', print_generated: 'Generated {when} LT',
     group_vorbereitung: 'Preparation', group_vor_dem_start: 'Before take-off', group_start: 'Take-off', group_fahrt: 'Flight', group_landung: 'Landing', group_nach_der_fahrt: 'After the flight', group_notfall: 'Emergency',
-    update_available: 'New app version – tap to update.'
+    update_available: 'New app version – tap to update.',
+    reference_lists: 'Reference and special procedures', documents: 'Documents', documents_for: 'Documents for “{title}”', documents_none: 'No documents yet.',
+    documents_hint: 'Background material linked to the checklists – for reading, not part of the list. Opening needs a connection.', documents_offline: 'Documents cannot be opened offline.', open_doc: 'Open'
   }
 };
 

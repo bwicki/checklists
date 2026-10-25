@@ -1,5 +1,28 @@
 # Änderungen
 
+## 0.2.0 – 2026-10-25
+
+**Inhalt (Seed)**
+- 33 Checklisten als Entwürfe aus den Vorlagen der Fahrlehrer (Nachtfahrt, MEL, Crew-Einweisung, Betriebslimiten, Passagiereinweisung, Nebeldurchstoss, Fesselaufstieg, Landung, Notverfahren → 7 Notfall-Listen) und Grundlagen (Merkblatt Trockenheit, Beitrag 079 Aussenlandungen, Faktenblatt Landwirte); Platzhalter für die Workshop-Themen (Flugplanung, Meteo, Luftraum, Borddokumente, Masse und Gasreserven, Standardverfahren, Beförderungsschein, Prüfungsfahrt FE(B) u. a.).
+- Zwei Referenzgruppen «Grundlagen» und «Sonderverfahren» (zählen nicht für «Nächster Schritt»); Vorbereitung mit Limit 6.
+- 12 neue Variablen (Bodenwind, Brennerdruck, Flaschen, Landemasse, Passagiere, Parachute, Fesselbetrieb) und zwei Ballonmuster (Kubicek BB34Z, Ultramagic M-90) mit Werten aus den Entwürfen.
+- 14 vertiefende Dokumente den Listen zugeordnet. Workflow «Seed SBA content» (Actions) spielt alles wiederholbar ein.
+- Gliederungsvorschlag für den Workshop: `docs/Checklisten-Gliederung_Workshop_v0.2.docx`.
+
+**Piloten-App**
+- Dokumente je Checkliste: Buch-Symbol mit Zähler im Listenkopf → Liste der Unterlagen (öffnen im Browser, braucht Netz); Seite «Mehr → Dokumente» mit allen Unterlagen nach Liste. Buch-Symbol in der Übersicht bei Listen mit Dokumenten.
+- Referenzgruppen in eigener Sektion «Grundlagen und Sonderverfahren» unter den Flugphasen.
+- «Nächster Schritt» folgt jetzt der Reihenfolge der Listen (innerhalb der Gruppe und über Gruppen) und überspringt heute Erledigtes; die Abschlussseite schlägt die nächste Liste in dieser Reihenfolge vor.
+
+**Verwaltung**
+- Büroklammer je Checkliste: Dokumente hochladen (PDF, Word, Excel, Bilder, max. 25 MB), Titel ändern, entfernen; Spalte «Dok.».
+- Pfeile ordnen Checklisten innerhalb einer Gruppe.
+- Einstellungen → Gruppen: Namen DE/FR/EN, Typ Flugphase/Referenz, Limit, Reihenfolge, neue Gruppen anlegen, leere löschen.
+
+**Worker**
+- Tabelle `documents`, Spalten `groups.ist_phase` und `checklists.reihenfolge` (Migrationen unter `worker/migrations/`, vom Deploy-Workflow eingespielt).
+- Endpunkte: `/api/admin/documents` (Liste, Upload, Titel, Löschen), `/api/doc/:id?exp&sig` (signierter Link, eine Woche gültig, im Bootstrap mitgeliefert), `/api/admin/groups` (anlegen, ändern, ordnen, löschen), `/api/admin/checklists/order`.
+
 ## 0.1.0 – 2026-10-24
 
 Erste nutzbare Fassung.

@@ -33,8 +33,13 @@ const I = {
   log: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   crown: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18l1-11-5 4-5-7-5 7-5-4z"/></svg>',
   warn: '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></svg>',
-  chevR: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>'
+  chevR: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+  clip: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5l-8.5 8.5a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3"/></svg>',
+  up: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>',
+  down: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  ext: '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'
 };
+const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? Math.round(n / 1024) + ' KB' : (n || 0) + ' B');
 
 // ---------- Zustand ----------
 let page = (location.hash || '#checklists').slice(1);
@@ -104,8 +109,10 @@ const langPill = (st, lang) => st === 'geprueft' ? `<span class="pill green" tit
 async function viewChecklists() {
   const d = cache.cl || await loadChecklists();
   const groups = d.groups; const gname = (id) => (groups.find((g) => g.id === id) || {}).name_de || id;
+  const gorder = Object.fromEntries(groups.map((g, i) => [g.id, i]));
+  d.checklists.sort((a, b) => (gorder[a.group_id] - gorder[b.group_id]) || ((a.reihenfolge || 0) - (b.reihenfolge || 0)) || ((a.created_at || 0) - (b.created_at || 0)));
   const rows = d.checklists.filter((c) => (!filt.gruppe || c.group_id === filt.gruppe) && (!filt.art || c.art === filt.art) && (!filt.status || (filt.status === 'entwurf' ? !!draft(c) : !!current(c))));
-  const counts = groups.map((g) => { const n = d.checklists.filter((c) => c.group_id === g.id).length; return `<span class="chip ${g.limit_count && n >= g.limit_count ? 'full' : ''}">${h(g.name_de)} ${n}${g.limit_count ? ' / ' + g.limit_count : ''}</span>`; }).join('');
+  const counts = groups.map((g) => { const n = d.checklists.filter((c) => c.group_id === g.id).length; return `<span class="chip ${g.limit_count && n >= g.limit_count ? 'full' : ''}" title="${g.ist_notfall ? 'Notfall' : g.ist_phase === 0 ? 'Referenzgruppe (nicht im «Nächsten Schritt»)' : 'Flugphase'}">${h(g.name_de)} ${n}${g.limit_count ? ' / ' + g.limit_count : ''}${g.ist_phase === 0 && !g.ist_notfall ? ' ·' : ''}</span>`; }).join('');
   for (const id of [...sel]) if (!d.checklists.some((c) => c.id === id)) sel.delete(id);
   return `<div class="head"><h1>Checklisten</h1><div class="tools">
       <span class="cnt">${sel.size} ausgewählt</span>
@@ -118,18 +125,19 @@ async function viewChecklists() {
     <div class="filters"><label for="f-gruppe">Gruppe</label><select id="f-gruppe" data-filt="gruppe"><option value="">Alle</option>${groups.map((g) => `<option value="${g.id}" ${filt.gruppe === g.id ? 'selected' : ''}>${h(g.name_de)}</option>`).join('')}</select>
       <label for="f-art">Ballonart</label><select id="f-art" data-filt="art"><option value="">Alle</option>${Object.entries(ART).map(([k, v]) => `<option value="${k}" ${filt.art === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <label for="f-status">Status</label><select id="f-status" data-filt="status"><option value="">Alle</option><option value="frei" ${filt.status === 'frei' ? 'selected' : ''}>Freigegeben</option><option value="entwurf" ${filt.status === 'entwurf' ? 'selected' : ''}>Mit Entwurf</option></select></div>
-    <div class="card tablewrap"><table><thead><tr><th><input type="checkbox" data-act="sel-all" aria-label="Alle auswählen" ${rows.length && rows.every((c) => sel.has(c.id)) ? 'checked' : ''}></th><th>Gruppe</th><th>Checkliste</th><th>Ballonart</th><th>Sprachen</th><th>Punkte</th><th>Version</th><th>Status</th><th>Geändert</th><th>Nutzungen</th><th></th></tr></thead><tbody>
+    <div class="card tablewrap"><table><thead><tr><th><input type="checkbox" data-act="sel-all" aria-label="Alle auswählen" ${rows.length && rows.every((c) => sel.has(c.id)) ? 'checked' : ''}></th><th>Gruppe</th><th></th><th>Checkliste</th><th>Ballonart</th><th>Sprachen</th><th>Punkte</th><th>Version</th><th>Status</th><th>Geändert</th><th>Nutzungen</th><th>Dok.</th><th></th></tr></thead><tbody>
       ${rows.length ? rows.map((c) => { const v = current(c) || latest(c); const dr = draft(c); return `<tr>
         <td><input type="checkbox" data-act="sel" data-id="${c.id}" aria-label="Auswählen" ${sel.has(c.id) ? 'checked' : ''}></td>
-        <td>${h(gname(c.group_id))}</td><td><b>${h(v.title)}</b></td><td><span class="pill blue">${ART[c.art]}</span></td>
+        <td>${h(gname(c.group_id))}</td><td class="nowrap"><button type="button" class="ib small" data-act="cl-up" data-id="${c.id}" aria-label="Nach oben" title="In der Gruppe nach oben" ${d.checklists.filter((x) => x.group_id === c.group_id).indexOf(c) === 0 ? 'disabled' : ''}>${I.up}</button><button type="button" class="ib small" data-act="cl-down" data-id="${c.id}" aria-label="Nach unten" title="In der Gruppe nach unten" ${(() => { const gl = d.checklists.filter((x) => x.group_id === c.group_id); return gl.indexOf(c) === gl.length - 1 ? 'disabled' : ''; })()}>${I.down}</button></td><td><b>${h(v.title)}</b></td><td><span class="pill blue">${ART[c.art]}</span></td>
         <td><span class="langs"><span class="pill green" title="Quelle (importiert)">DE</span>${langPill(v.status_fr, 'FR')}${langPill(v.status_en, 'EN')}</span></td>
         <td class="num">${v.item_count}</td><td class="num">${v.version}${dr && dr.id !== v.id ? ` <span class="pill grey">Entwurf ${dr.version}</span>` : ''}</td>
         <td>${current(c) ? '<span class="pill green">Freigegeben</span>' : '<span class="pill amber">Entwurf</span>'}</td>
         <td class="nowrap">${h(fmtDate(v.released_at || v.created_at))} · ${h(v.created_by || '')}</td><td class="num">${c.sessions}</td>
+        <td><button type="button" class="ib small" data-act="docs" data-id="${c.id}" aria-label="Dokumente" title="Vertiefende Dokumente (${c.documents || 0})" style="gap:4px;width:auto;padding:0 8px;${c.documents ? 'color:var(--blue)' : ''}">${I.clip}<span style="font-size:12px;font-weight:700">${c.documents || 0}</span></button></td>
         <td class="acts"><button type="button" class="ib small" data-act="edit" data-id="${c.id}" aria-label="Bearbeiten" title="Bearbeiten (neue Version)">${I.edit}</button>
           ${dr ? `<button type="button" class="ib small" style="color:var(--green)" data-act="release" data-id="${dr.id}" aria-label="Entwurf freigeben" title="Entwurf ${dr.version} freigeben">${I.release}</button>` : ''}
           <button type="button" class="ib small" data-act="translate" data-id="${c.id}" aria-label="Übersetzungen" title="Übersetzungen FR / EN">${I.globe}</button>
-          <button type="button" class="ib small danger" data-act="del" data-id="${c.id}" aria-label="Löschen" title="Löschen">${I.trash}</button></td></tr>`; }).join('') : '<tr><td colspan="11" class="msg">Keine Checklisten. Über «Import» eine Word- oder Excel-Datei laden oder von Hand anlegen.</td></tr>'}
+          <button type="button" class="ib small danger" data-act="del" data-id="${c.id}" aria-label="Löschen" title="Löschen">${I.trash}</button></td></tr>`; }).join('') : '<tr><td colspan="13" class="msg">Keine Checklisten. Über «Import» eine Word- oder Excel-Datei laden oder von Hand anlegen.</td></tr>'}
     </tbody></table></div>`;
 }
 
@@ -197,6 +205,25 @@ async function openTranslate(c) {
   const v = current(c) || latest(c);
   try { const r = await api.admin.version(v.id); cache.tr = { version: r.version, edit: { fr: r.version.content_fr ? contentToText(r.version.content_fr) : '', en: r.version.content_en ? contentToText(r.version.content_en) : '' }, msg: null }; modal = viewTranslate; render(); }
   catch (e) { toast(errText(e)); }
+}
+
+// Dokumente je Checkliste
+function viewDocsModal() {
+  const dm = cache.docs; if (!dm) return '';
+  return `<div class="modal-bg"><div class="modal" style="max-width:760px"><div class="mh"><h2>Dokumente: ${h(dm.title)}</h2><button type="button" class="ib small" data-act="close" aria-label="Schliessen">${I.x}</button></div>
+    <div class="mb">
+      <p class="hint">Vertiefende Unterlagen (PDF, Word, Excel, Bilder) – Piloten öffnen sie aus der Checkliste und unter «Mehr → Dokumente». Sie sind nicht Teil der Liste und werden nicht protokolliert. Max. 25 MB je Datei.</p>
+      <div class="tablewrap"><table><thead><tr><th>Titel</th><th>Datei</th><th>Grösse</th><th>Hinzugefügt</th><th></th></tr></thead><tbody>
+        ${dm.list.length ? dm.list.map((d) => `<tr><td><input type="text" data-doctitle="${d.id}" value="${h(d.titel)}" style="height:34px;width:100%;min-width:200px"></td><td><a href="${h(d.url)}" target="_blank" rel="noopener">${h(d.dateiname)} ${I.ext}</a></td><td class="num">${fmtSize(d.groesse)}</td><td class="nowrap">${fmtDate(d.created_at)}</td><td class="acts"><button type="button" class="ib small danger" data-act="doc-del" data-id="${d.id}" aria-label="Entfernen" title="Entfernen">${I.trash}</button></td></tr>`).join('') : '<tr><td colspan="5" class="msg">Noch keine Dokumente.</td></tr>'}
+      </tbody></table></div>
+      <form id="docform" class="row" style="align-items:flex-end"><div class="field" style="flex:2 1 220px"><label for="doc-title">Titel (wie er in der App erscheint)</label><input id="doc-title" type="text" placeholder="z. B. Merkblatt Trockenheit (SBAV, Juli 2026)"></div><div class="field"><label for="doc-file">Datei</label><input id="doc-file" type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg,.txt" style="height:auto;padding:8px"></div><button type="submit" class="btn primary" ${dm.busy ? 'disabled' : ''}>${I.upload} ${dm.busy ? 'Lädt …' : 'Hochladen'}</button></form>
+      ${dm.msg ? `<p class="msg ${dm.kind || 'err'}">${h(dm.msg)}</p>` : ''}
+    </div>
+    <div class="mf"><button type="button" class="btn" data-act="close">${I.x} Schliessen</button></div></div></div>`;
+}
+async function openDocs(c) {
+  const v = current(c) || latest(c);
+  try { const r = await api.admin.documents(c.id); cache.docs = { cid: c.id, title: v.title, list: r.documents, msg: null }; modal = viewDocsModal; render(); } catch (e) { toast(errText(e)); }
 }
 
 // Druck / PDF
@@ -367,14 +394,21 @@ async function viewSettings() {
           <div class="field"><label for="s-key">Claude-API-Schlüssel (für automatische Übersetzungen) · ${s.api_key_set ? '<span class="pill green">hinterlegt</span>' : '<span class="pill amber">fehlt</span>'}</label><input id="s-key" type="password" autocomplete="off" placeholder="${s.api_key_set ? 'neuen Schlüssel eingeben, um zu ersetzen' : 'sk-ant-…'}"></div>
           <p class="hint">Wird verschlüsselt gespeichert und nie angezeigt. Leer lassen = unverändert. Schlüssel unter console.anthropic.com → API Keys erzeugen.</p>
           <div class="actions"><button type="submit" class="btn primary">${I.check} Schlüssel speichern</button>${s.api_key_set ? `<button type="button" class="btn danger" data-act="key-del">${I.trash} Entfernen</button>` : ''}</div></form>
-        <form class="card form" id="groupsform"><h2 style="font-size:16px">Gruppen (Flugzustände) und Limits</h2>
-          ${g.map((gr) => `<div class="row"><div class="field" style="flex:2 1 200px"><label>${h(gr.name_de)} · ${h(gr.name_fr)} · ${h(gr.name_en)}</label><span class="msg">${gr.count} Listen</span></div><div class="field"><label for="g-${gr.id}">Limit (0 = keines)</label><input id="g-${gr.id}" type="number" min="0" data-glimit="${gr.id}" value="${gr.limit_count}"></div></div>`).join('')}
-          <div class="actions"><button type="submit" class="btn primary">${I.check} Limits speichern</button></div></form>
+        <form class="card form" id="groupsform"><h2 style="font-size:16px">Gruppen und Limits</h2>
+          <p class="hint">Flugphasen bilden die Reihenfolge für «Nächster Schritt». Referenzgruppen (Grundlagen, Sonderverfahren) erscheinen in der App darunter und zählen dort nicht mit. Namen in drei Sprachen; Limit 0 = keines.</p>
+          <div class="tablewrap"><table><thead><tr><th></th><th>DE</th><th>FR</th><th>EN</th><th>Typ</th><th>Limit</th><th>Listen</th><th></th></tr></thead><tbody>
+          ${g.map((gr, i) => `<tr><td class="nowrap"><button type="button" class="ib small" data-act="g-up" data-id="${gr.id}" aria-label="Nach oben" ${i === 0 ? 'disabled' : ''}>${I.up}</button> <button type="button" class="ib small" data-act="g-down" data-id="${gr.id}" aria-label="Nach unten" ${i === g.length - 1 ? 'disabled' : ''}>${I.down}</button></td>
+            <td><input type="text" data-g="${gr.id}" data-gf="name_de" value="${h(gr.name_de)}" style="height:34px;min-width:140px"></td><td><input type="text" data-g="${gr.id}" data-gf="name_fr" value="${h(gr.name_fr)}" style="height:34px;min-width:140px"></td><td><input type="text" data-g="${gr.id}" data-gf="name_en" value="${h(gr.name_en)}" style="height:34px;min-width:140px"></td>
+            <td>${gr.ist_notfall ? '<span class="pill red">Notfall</span>' : `<select data-g="${gr.id}" data-gf="ist_phase" style="height:34px"><option value="1" ${gr.ist_phase !== 0 ? 'selected' : ''}>Flugphase</option><option value="0" ${gr.ist_phase === 0 ? 'selected' : ''}>Referenz</option></select>`}</td>
+            <td><input type="number" min="0" data-g="${gr.id}" data-gf="limit_count" value="${gr.limit_count}" style="height:34px;width:70px"></td><td class="num">${gr.count}</td>
+            <td class="acts">${!gr.ist_notfall && !gr.count ? `<button type="button" class="ib small danger" data-act="g-del" data-id="${gr.id}" aria-label="Gruppe löschen" title="Gruppe löschen (nur leer)">${I.trash}</button>` : ''}</td></tr>`).join('')}
+          </tbody></table></div>
+          <div class="actions"><button type="submit" class="btn primary">${I.check} Gruppen speichern</button><button type="button" class="btn" data-act="g-new">${I.plus} Gruppe hinzufügen</button></div></form>
       </div></div>`;
 }
 
 // ---------- Ereignisse ----------
-function closeModal() { modal = null; cache.tr = null; cache.userLog = null; render(); }
+function closeModal() { modal = null; cache.tr = null; cache.userLog = null; cache.docs = null; render(); }
 $app.addEventListener('change', async (e) => {
   const el = e.target;
   if (el.dataset.filt) { filt[el.dataset.filt] = el.value; render(); return; }
@@ -384,6 +418,7 @@ $app.addEventListener('change', async (e) => {
   if (el.dataset.lineType != null) { imp.lines[+el.dataset.lineType].type = el.value; render(); return; }
   if (el.dataset.lineText != null) { imp.lines[+el.dataset.lineText].text = el.value; return; }
   if (el.id === 'file' && el.files[0]) { importFile(el.files[0]); return; }
+  if (el.dataset.doctitle) { try { await api.admin.updateDocument(el.dataset.doctitle, { titel: el.value.trim() }); toast('Titel gespeichert.'); } catch (e2) { toast(errText(e2)); } return; }
   if (el.dataset.role) { try { await api.admin.updateUser(el.dataset.role, { rolle: el.value }); toast('Rolle gespeichert.'); } catch (e2) { toast(errText(e2)); } render(); return; }
 });
 $app.addEventListener('input', (e) => { const el = e.target; if (el.dataset.ed === 'text') { editor.text = el.value; clearTimeout(editor.tm); editor.tm = setTimeout(() => { const ta = document.getElementById('e-text'); const pos = ta ? ta.selectionStart : 0; render(); const ta2 = document.getElementById('e-text'); if (ta2) { ta2.focus(); ta2.setSelectionRange(pos, pos); } }, 500); } });
@@ -408,7 +443,19 @@ $app.addEventListener('submit', async (e) => {
   }
   if (f.id === 'settingsform') { const b = {}; f.querySelectorAll('[name]').forEach((i) => { b[i.name] = i.value.trim(); }); try { await api.admin.saveSettings(b); toast('Gespeichert.'); } catch (e2) { toast(errText(e2)); } return; }
   if (f.id === 'keyform') { const k = document.getElementById('s-key').value.trim(); if (!k) { toast('Kein Schlüssel eingegeben.'); return; } try { await api.admin.saveSettings({ anthropic_api_key: k }); toast('Schlüssel gespeichert.'); render(); } catch (e2) { toast(errText(e2)); } return; }
-  if (f.id === 'groupsform') { try { for (const i of f.querySelectorAll('[data-glimit]')) await api.admin.updateGroup(i.dataset.glimit, { limit_count: +i.value }); toast('Limits gespeichert.'); cache.cl = null; } catch (e2) { toast(errText(e2)); } return; }
+  if (f.id === 'groupsform') {
+    const byId = {}; f.querySelectorAll('[data-g]').forEach((i) => { (byId[i.dataset.g] ||= {})[i.dataset.gf] = i.dataset.gf === 'limit_count' || i.dataset.gf === 'ist_phase' ? +i.value : i.value.trim(); });
+    try { for (const [id, b] of Object.entries(byId)) await api.admin.updateGroup(id, b); toast('Gruppen gespeichert.'); cache.cl = null; render(); } catch (e2) { toast(errText(e2)); }
+    return;
+  }
+  if (f.id === 'docform') {
+    const file = document.getElementById('doc-file').files[0]; const titel = document.getElementById('doc-title').value.trim();
+    if (!file) { cache.docs.msg = 'Bitte eine Datei wählen.'; render(); return; }
+    cache.docs.busy = true; cache.docs.msg = null; render();
+    try { await api.admin.uploadDocument(cache.docs.cid, file, titel); const r = await api.admin.documents(cache.docs.cid); cache.docs.list = r.documents; cache.docs.msg = 'Hochgeladen.'; cache.docs.kind = 'ok'; cache.cl = null; await loadChecklists(); }
+    catch (e2) { cache.docs.msg = e2.code === 'datei_zu_gross' ? 'Datei zu gross (max. 25 MB).' : errText(e2); cache.docs.kind = 'err'; }
+    cache.docs.busy = false; render(); return;
+  }
 });
 $app.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
@@ -425,6 +472,12 @@ $app.addEventListener('click', async (e) => {
     case 'release': if (confirm('Entwurf freigeben? Die Piloten erhalten die neue Version beim nächsten Öffnen der App.')) { try { await api.admin.release(id); await loadChecklists(); toast('Freigegeben.'); } catch (e2) { toast(errText(e2)); } render(); } break;
     case 'del': { const c = cl().find((x) => x.id === id); if (c && confirm(`Checkliste «${(current(c) || latest(c)).title}» löschen? Protokolleinträge bleiben erhalten.`)) { try { await api.admin.deleteChecklist(id); sel.delete(id); await loadChecklists(); toast('Gelöscht.'); } catch (e2) { toast(errText(e2)); } render(); } break; }
     case 'translate': { const c = cl().find((x) => x.id === id); if (c) openTranslate(c); break; }
+    case 'docs': { const c = cl().find((x) => x.id === id); if (c) openDocs(c); break; }
+    case 'cl-up': case 'cl-down': { const c = cl().find((x) => x.id === id); if (!c) break; const gl = cl().filter((x) => x.group_id === c.group_id); const i = gl.indexOf(c); const j = act === 'cl-up' ? i - 1 : i + 1; if (j < 0 || j >= gl.length) break; [gl[i], gl[j]] = [gl[j], gl[i]]; try { await api.admin.orderChecklists(gl.map((x) => x.id)); await loadChecklists(); } catch (e2) { toast(errText(e2)); } render(); break; }
+    case 'doc-del': if (confirm('Dokument entfernen?')) { try { await api.admin.deleteDocument(id); const r = await api.admin.documents(cache.docs.cid); cache.docs.list = r.documents; cache.cl = null; await loadChecklists(); } catch (e2) { toast(errText(e2)); } render(); } break;
+    case 'g-new': { const name = prompt('Name der neuen Gruppe (DE):'); if (!name) break; try { await api.admin.createGroup({ name_de: name.trim(), ist_phase: 0, limit_count: 0 }); toast('Gruppe angelegt – Typ, Übersetzungen und Limit unten anpassen.'); cache.cl = null; } catch (e2) { toast(errText(e2)); } render(); break; }
+    case 'g-del': if (confirm('Leere Gruppe löschen?')) { try { await api.admin.deleteGroup(id); toast('Gelöscht.'); cache.cl = null; } catch (e2) { toast(e2.code === 'gruppe_nicht_leer' ? 'Gruppe ist nicht leer.' : errText(e2)); } render(); } break;
+    case 'g-up': case 'g-down': { const gl = (await api.admin.groups()).groups.map((x) => x.id); const i = gl.indexOf(id); const j = act === 'g-up' ? i - 1 : i + 1; if (i < 0 || j < 0 || j >= gl.length) break; [gl[i], gl[j]] = [gl[j], gl[i]]; try { await api.admin.orderGroups(gl); cache.cl = null; } catch (e2) { toast(errText(e2)); } render(); break; }
     case 'tr-auto': { cache.tr.busy = true; cache.tr.msg = null; render(); try { const r = await api.admin.translate(cache.tr.version.id); cache.tr.edit.fr = contentToText(r.fr); cache.tr.edit.en = contentToText(r.en); cache.tr.version.status_fr = 'automatisch'; cache.tr.version.status_en = 'automatisch'; cache.tr.msg = 'Übersetzt – bitte prüfen und als geprüft speichern.'; cache.tr.kind = 'ok'; await loadChecklists(); } catch (e2) { cache.tr.msg = errText(e2); cache.tr.kind = 'err'; } cache.tr.busy = false; render(); break; }
     case 'tr-ok': case 'tr-save': { const lang = el.dataset.lang; const ta = document.querySelector(`textarea[data-tr="${lang}"]`); const txt = ta ? ta.value : cache.tr.edit[lang]; let content; try { content = textToContent(txt); } catch { cache.tr.msg = 'Text unlesbar.'; render(); break; } if (!content.title) { cache.tr.msg = 'Titel fehlt (# Titel).'; render(); break; } try { await api.admin.setTranslation(cache.tr.version.id, lang, content, act === 'tr-ok' ? 'geprueft' : 'automatisch'); cache.tr.version['status_' + lang] = act === 'tr-ok' ? 'geprueft' : 'automatisch'; cache.tr.edit[lang] = txt; cache.tr.msg = lang.toUpperCase() + ' gespeichert.'; cache.tr.kind = 'ok'; await loadChecklists(); } catch (e2) { cache.tr.msg = errText(e2); cache.tr.kind = 'err'; } render(); break; }
     case 'insvar': { const ta = document.getElementById('e-text'); if (!ta) break; const ins = '{{' + el.dataset.key + '}}'; const s = ta.selectionStart; ta.value = ta.value.slice(0, s) + ins + ta.value.slice(ta.selectionEnd); editor.text = ta.value; render(); const ta2 = document.getElementById('e-text'); if (ta2) { ta2.focus(); ta2.setSelectionRange(s + ins.length, s + ins.length); } break; }

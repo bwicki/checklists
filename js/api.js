@@ -43,13 +43,21 @@ export const api = {
     createChecklist: (b) => call('POST', '/api/admin/checklists', b),
     updateChecklist: (id, b) => call('PUT', '/api/admin/checklists/' + id, b),
     deleteChecklist: (id) => call('DELETE', '/api/admin/checklists/' + id),
+    orderChecklists: (ids) => call('PUT', '/api/admin/checklists/order', { ids }),
     newVersion: (id, b) => call('POST', '/api/admin/checklists/' + id + '/versions', b),
     version: (vid) => call('GET', '/api/admin/versions/' + vid),
     release: (vid) => call('POST', '/api/admin/versions/' + vid + '/release'),
     translate: (vid) => call('POST', '/api/admin/versions/' + vid + '/translate'),
     setTranslation: (vid, lang, content, status) => call('PUT', '/api/admin/versions/' + vid + '/translation', { lang, content, status }),
     groups: () => call('GET', '/api/admin/groups'),
+    createGroup: (b) => call('POST', '/api/admin/groups', b),
     updateGroup: (id, b) => call('PUT', '/api/admin/groups/' + id, b),
+    deleteGroup: (id) => call('DELETE', '/api/admin/groups/' + id),
+    orderGroups: (ids) => call('PUT', '/api/admin/groups/order', { ids }),
+    documents: (checklist_id) => call('GET', '/api/admin/documents' + (checklist_id ? '?checklist_id=' + encodeURIComponent(checklist_id) : '')),
+    uploadDocument: (checklist_id, file, titel) => call('POST', '/api/admin/documents?checklist_id=' + encodeURIComponent(checklist_id), file, { headers: { 'X-Filename': encodeURIComponent(file.name), 'X-Title': encodeURIComponent(titel || ''), 'Content-Type': file.type || 'application/octet-stream' } }),
+    updateDocument: (id, b) => call('PUT', '/api/admin/documents/' + id, b),
+    deleteDocument: (id) => call('DELETE', '/api/admin/documents/' + id),
     balloonTypes: () => call('GET', '/api/admin/balloon-types'),
     createType: (b) => call('POST', '/api/admin/balloon-types', b),
     updateType: (id, b) => call('PUT', '/api/admin/balloon-types/' + id, b),
@@ -61,6 +69,6 @@ export const api = {
     stats: (from, to) => call('GET', '/api/admin/stats?from=' + (from || 0) + '&to=' + (to || 0)),
     settings: () => call('GET', '/api/admin/settings'),
     saveSettings: (b) => call('PUT', '/api/admin/settings', b),
-    uploadFile: (file) => call('POST', '/api/admin/files', file, { headers: { 'X-Filename': file.name, 'Content-Type': file.type || 'application/octet-stream' } })
+    uploadFile: (file) => call('POST', '/api/admin/files', file, { headers: { 'X-Filename': encodeURIComponent(file.name), 'Content-Type': file.type || 'application/octet-stream' } })
   }
 };

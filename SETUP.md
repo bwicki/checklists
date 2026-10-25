@@ -48,8 +48,9 @@ ein Token ohne «D1 Edit»/«R2 Edit»). Der Workflow ist wiederholbar.
 
 1. Piloten-App öffnen (https://checklists.wicki.aero), Sprache wählen, eigenes Kürzel (≥ 5 Zeichen) und
    Namen eingeben. **Der erste angelegte Nutzer wird automatisch Supermaster.**
-2. Verwaltung öffnen (`/admin.html`, gleiches Kürzel) → **Ballonmuster** anlegen (Werte je Variable),
-   dann **Import** (Word/Excel/Text) oder «Neue Liste von Hand» → prüfen → **Speichern und freigeben**.
+2. Verwaltung öffnen (`/admin.html`, gleiches Kürzel). Der Ausgangsinhalt (33 Entwürfe, Variablen, zwei
+   Ballonmuster, Dokumente) ist über Actions → **Seed SBA content** eingespielt; falls nicht, dort «Run workflow».
+   Entwürfe prüfen (Stift) → **Speichern und freigeben**; weitere Listen über **Import** (Word/Excel/Text).
 3. Unter **Nutzer** dem Admin die Rolle «Admin» geben, sobald er sich in der App angemeldet hat.
 4. Testweise in der App einen Ballon erfassen (Mehr → Ballon hinzufügen) – die Listen der passenden
    Ballonart erscheinen.
