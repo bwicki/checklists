@@ -1,5 +1,7 @@
 # SBA Checklisten
 
+**App 0.2.0 · README Dok. 261116-01**
+
 Ballon-Checklisten je Flugzustand als installierbare Web-App (PWA) mit Protokoll je Nutzer und
 Verwaltung am Desktop – für die Swiss Ballooning Academy.
 
